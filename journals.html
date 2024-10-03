@@ -293,7 +293,11 @@
              </div>
          </div>
 
-    <script>
+    
+
+
+
+<script>
   function fetchCSV(url) {
     return fetch(url)
       .then(response => response.text())
@@ -301,7 +305,20 @@
         return text.split('\n').map(row => row.split(','));
       });
   }
-  
+
+  // Load cart from localStorage
+  function loadCart() {
+    const savedCart = localStorage.getItem('cart');
+    return savedCart ? JSON.parse(savedCart) : [];
+  }
+
+  // Save cart to localStorage
+  function saveCart() {
+    localStorage.setItem('cart', JSON.stringify(cart));
+  }
+
+  // Initialize the cart from localStorage on page load
+  let cart = loadCart();
 
   function initializeFilters() {
     fetchCSV('journals.csv').then(data => {
@@ -327,10 +344,25 @@
                 }
             }
         });
-    });
-}
 
-function filterSubjectsByPackage() {
+        // Auto-select package if passed in URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const selectedPackage = urlParams.get('package');
+        const selectedSubject = urlParams.get('subject');
+
+        if (selectedPackage) {
+            packageSelect.value = selectedPackage;
+            filterSubjectsByPackage(() => {
+                if (selectedSubject) {
+                    document.getElementById('subject').value = selectedSubject;
+                    filterJournals();
+                }
+            });
+        }
+    });
+  }
+
+  function filterSubjectsByPackage(callback = null) {
     const selectedPackage = document.getElementById('package').value.trim();
     const subjectSelect = document.getElementById('subject');
     subjectSelect.innerHTML = '<option value="">-- Select Subject --</option>'; // Clear existing options
@@ -361,45 +393,44 @@ function filterSubjectsByPackage() {
                 }
             }
         });
-        
+
+        // Execute callback if provided (e.g., to auto-select a subject)
+        if (callback) callback();
     });
-    
-}
+  }
 
+  function initializeTable() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const selectedPackage = urlParams.get('package');
+    const selectedSubject = urlParams.get('subject');
+    document.getElementById('packageTitle').textContent = selectedPackage || '-- No Package Selected --';
 
-function initializeTable() {
-    
-  const urlParams = new URLSearchParams(window.location.search);
-  const selectedPackage = urlParams.get('package');
-  document.getElementById('packageTitle').textContent = selectedPackage;
+    fetchCSV('journals.csv').then(data => {
+      const tableBody = document.getElementById('resultTable');
+      tableBody.innerHTML = ""; // Clear existing rows
 
-  fetchCSV('journals.csv').then(data => {
-    const tableBody = document.getElementById('resultTable');
-    tableBody.innerHTML = ""; // Clear existing rows
+      const headers = data[0];
+      const rows = data.slice(1);
 
-    const headers = data[0];
-    const rows = data.slice(1);
+      rows.forEach(row => {
+        if (row.length === headers.length) {
+          const [packageName, subjectName, journalName] = row;
 
-    rows.forEach(row => {
-      if (row.length === headers.length) {
-        const [packageName, subjectName, journalName] = row;
-
-        if (packageName === selectedPackage) {
-          const rowHTML = `
-              <tr>
-                  <td><input type="checkbox" class="select-row" data-journal="${journalName}"></td>
-                  <td>${journalName}</td>
-              </tr>
-          `;
-          tableBody.innerHTML += rowHTML;
+          if (packageName === selectedPackage && (!selectedSubject || subjectName === selectedSubject)) {
+            const rowHTML = `
+                <tr>
+                    <td><input type="checkbox" class="select-row" data-journal="${journalName}"></td>
+                    <td>${journalName}</td>
+                </tr>
+            `;
+            tableBody.innerHTML += rowHTML;
+          }
         }
-      }
+      });
     });
-  });
-}
+  }
 
-
-function filterJournals() {
+  function filterJournals() {
     const selectedSubject = document.getElementById('subject').value.trim().toLowerCase();
     const selectedPackage = document.getElementById('package').value.trim().toLowerCase();
     const tableBody = document.getElementById('resultTable');
@@ -427,11 +458,7 @@ function filterJournals() {
             }
         });
     });
-}
-
-
-
-
+  }
 
   function toggleAllSelection() {
     const selectAll = document.getElementById('selectAll').checked;
@@ -460,10 +487,13 @@ function filterJournals() {
         }
     });
 
-    alert('Journals added to cart!');
-}
+    // Save the cart to localStorage
+    saveCart();
 
-function clearCart() {
+    alert('Journals added to cart!');
+  }
+
+  function clearCart() {
     const cartItems = document.getElementById('cartItems');
     cartItems.innerHTML = ""; // Clear existing cart items
     document.getElementById('cartPage').style.display = 'none'; // Hide cart page
@@ -480,40 +510,18 @@ function clearCart() {
     alert('Cart cleared!');
 }
 
-
-function deleteFromCart(index) {
+  function deleteFromCart(index) {
     // Remove the item from the cart based on the index
     cart.splice(index, 1);
 
-    // Re-render the cart view after deleting the item
-    viewCart();
-    
-    // Optional: alert the user
+    // Save the cart to localStorage
+    saveCart();
+
     alert('Item removed from the cart');
-}
-
-function deleteSelectedItems() {
-    // Get all checked checkboxes
-    const checkboxes = document.querySelectorAll('.cart-checkbox:checked');
-    
-    // Create an array to hold the indices of items to delete
-    const indicesToDelete = Array.from(checkboxes).map(checkbox => parseInt(checkbox.getAttribute('data-index')));
-
-    // Sort indices in descending order to avoid shifting issues when deleting
-    indicesToDelete.sort((a, b) => b - a);
-
-    // Remove the selected items from the cart array
-    indicesToDelete.forEach(index => cart.splice(index, 1));
-
-    // Re-render the cart view after deleting the selected items
     viewCart();
-    
-    // Optional: alert the user
-    alert('Selected items removed from the cart');
-}
+  }
 
-
-function viewCart() {
+  function viewCart() {
     const cartPage = document.getElementById('cartPage');
     const cartItems = document.getElementById('cartItems');
 
@@ -534,12 +542,31 @@ function viewCart() {
             cartItems.innerHTML += listItem;
         });
     }
-}
+  }
 
+  function deleteSelectedItems() {
+    // Get all checked checkboxes
+    const checkboxes = document.querySelectorAll('.cart-checkbox:checked');
+    
+    // Create an array to hold the indices of items to delete
+    const indicesToDelete = Array.from(checkboxes).map(checkbox => parseInt(checkbox.getAttribute('data-index')));
 
+    // Sort indices in descending order to avoid shifting issues when deleting
+    indicesToDelete.sort((a, b) => b - a);
 
+    // Remove the selected items from the cart array
+    indicesToDelete.forEach(index => cart.splice(index, 1));
 
-  function requestQuotation() {
+    // Save the cart to localStorage
+    saveCart();
+
+    // Re-render the cart view after deleting the selected items
+    viewCart();
+    
+    alert('Selected items removed from the cart');
+  }
+
+   function requestQuotation() {
     if (cart.length === 0) {
         alert('Your cart is empty.');
         return;
@@ -556,13 +583,10 @@ function viewCart() {
 }
 
 
-  let cart = [];
-
   window.onload = function () {
     initializeFilters(); // Initialize both package and subject filters
     initializeTable();    // Initialize the table with default values
-};
-
+  };
 </script>
 
 
